@@ -22,6 +22,7 @@ from diffusers import (
 from diffusers.pipelines.stable_diffusion.safety_checker import (
     StableDiffusionSafetyChecker,
 )
+from sfast.compilers.diffusion_pipeline_compiler import compile, CompilationConfig
 
 UNET = "sdxl_lightning_4step_unet.pth"
 MODEL_BASE = "stabilityai/stable-diffusion-xl-base-1.0"
@@ -86,6 +87,20 @@ class Predictor(BasePredictor):
         ).to("cuda")
         unet_path = os.path.join(UNET_CACHE, UNET)
         self.pipe.unet.load_state_dict(torch.load(unet_path, map_location="cuda"))
+
+        self.pipe.scheduler = SCHEDULERS["K_EULER"].from_config(
+            self.pipe.scheduler.config, timestep_spacing="trailing"
+        )
+        config = CompilationConfig.Default()
+        config.enable_xformers = True
+        config.enable_triton = True
+
+        self.pipe = compile(self.pipe, config)
+
+        # initial compilation, takes ~20 sec
+        for _ in range(2):
+            __ = self.predict(prompt="a cool dog", negative_prompt="blurry", num_outputs=1, seed=None)
+
         print("setup took: ", time.time() - start)
 
     def run_safety_checker(self, image):
@@ -106,34 +121,11 @@ class Predictor(BasePredictor):
         negative_prompt: str = Input(
             description="Negative Input prompt", default="worst quality, low quality"
         ),
-        width: int = Input(
-            description="Width of output image. Recommended 1024 or 1280", default=1024
-        ),
-        height: int = Input(
-            description="Height of output image. Recommended 1024 or 1280", default=1024
-        ),
         num_outputs: int = Input(
             description="Number of images to output.",
             ge=1,
             le=4,
             default=1,
-        ),
-        scheduler: str = Input(
-            description="scheduler",
-            choices=SCHEDULERS.keys(),
-            default="K_EULER",
-        ),
-        num_inference_steps: int = Input(
-            description="Number of denoising steps. 4 for best results",
-            ge=1,
-            le=10,
-            default=4,
-        ),
-        guidance_scale: float = Input(
-            description="Scale for classifier-free guidance. Recommended 7-8",
-            ge=0,
-            le=50,
-            default=0,
         ),
         seed: int = Input(
             description="Random seed. Leave blank to randomize the seed", default=None
@@ -144,6 +136,11 @@ class Predictor(BasePredictor):
         ),
     ) -> List[Path]:
         """Run a single prediction on the model"""
+        num_inference_steps = 4
+        guidance_scale = 0
+        scheduler = "K_EULER"
+        width = 1024
+        height = 1024
         if seed is None:
             seed = int.from_bytes(os.urandom(4), "big")
         print(f"Using seed: {seed}")

@@ -3,16 +3,20 @@
 
 build:
   gpu: true
-  python_version: "3.11"
+  python_version: "3.10"
+  cuda: "12.1"
   python_packages:
     - "accelerate"
     - "diffusers"
-    - "torch==2.0.1"
-    - "torchvision==0.15.2"
+    - "torch==2.2.2"
+    - "torchvision"
     - "transformers"
+    - "xformers==0.0.25.post1"
 
   run:
     - curl -o /usr/local/bin/pget -L "https://github.com/replicate/pget/releases/download/v0.6.2/pget_linux_x86_64" && chmod +x /usr/local/bin/pget
+    - wget -P /tmp/ https://github.com/chengzeyi/stable-fast/releases/download/v1.0.5/stable_fast-1.0.5+torch222cu121-cp310-cp310-manylinux2014_x86_64.whl
+    - pip install /tmp/stable_fast-1.0.5+torch222cu121-cp310-cp310-manylinux2014_x86_64.whl
 
 # predict.py defines how predictions are run on your model
 predict: "predict.py:Predictor"
